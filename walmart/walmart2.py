@@ -34,14 +34,34 @@ def denormalize_store_data(train, valid, test, Y_hat, store_data_max):
         _, store_nbr=x.name
         norm=store_data_max.loc[store_nbr]
         return norm
+    # count the total number of rows
+    ntrain, m = train.values.shape
+
+    nvalid=0
+    if valid is not None:
+        nvalid, _ = valid.values.shape
+
+    ntest=0
+    if test is not None:
+        ntest, _ = test.values.shape
+
+    # denomalize training data
     Y_hat2=np.zeros(Y_hat.shape)
+
+    # find norm for each row of training data
     train_norm=train.apply(lambda x: f(x), axis=1).values
-    Y_hat2[:len(train)]=Y_hat[:len(train)]*train_norm
-    if(len(valid)>0):
+    Y_hat2[:ntrain]=Y_hat[:ntrain]*train_norm
+
+    # denomalize validation data
+    if(nvalid>0):
         valid_norm=valid.apply(lambda x: f(x), axis=1).values
-        Y_hat2[len(train):len(train)+len(valid)]=Y_hat[len(train):len(train)+len(valid)]*valid_norm
-    test_norm=test.apply(lambda x: f(x), axis=1).values
-    Y_hat2[len(train)+len(valid):]=Y_hat[len(train)+len(valid)]*test_norm
+        Y_hat2[ntrain:ntrain+nvalid]=Y_hat[ntrain:ntrain+nvalid]*valid_norm
+
+    # denomalize testing data
+    if(ntest>0):
+        test_norm=test.apply(lambda x: f(x), axis=1).values
+        Y_hat2[ntrain+nvalid:]=Y_hat[ntrain+nvalid:]*test_norm
+
     # update any less than 0 value to 0
     Y_hat2[Y_hat2<0]=0
     return Y_hat2

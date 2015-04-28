@@ -9,83 +9,132 @@ from similarity import l_similarity, logistic_sim_score, g_logistic_sim_score
 from sklearn import linear_model
     
 def build_model(train, valid, test, l, \
-                valid_init=None, alpha_train=1000, alpha_unknown=0.01):    
-    train_num, m = train.values.shape
-    valid_num, _ = valid.values.shape
-    n = train_num + valid_num
+                valid_init=None, alpha_train=1000, alpha_unknown=0.01):
+    # count the total number of rows
+    ntrain, m = train.values.shape
+
+    nvalid=0
+    if valid is not None:
+        nvalid, _ = valid.values.shape
+
+    ntest=0
     if test is not None:
-        test_num, _ = test.values.shape
-        n+=test_num
+        ntest, _ = test.values.shape
+
+    n = ntrain + nvalid + ntest
+
+    # init Y
     Y = np.zeros((n, m))
-    Y[0:train_num] = train.values
+    Y[0:ntrain] = train.values
+
     if valid_init is not None:
-        Y[train_num:train_num + valid_num] = valid_init
+        Y[ntrain:ntrain + nvalid] = valid_init
+
+    # randomly init Y_hat
     Y_hat = np.random.rand(n, m).flatten()
-    cost = l_cost_fun(Y_hat, Y, l, train_num, alpha_train, alpha_unknown)
-    print 'init cost=', cost    
+
+    # compute init cost
+    cost = l_cost_fun(Y_hat, Y, l, ntrain, alpha_train, alpha_unknown)
+    #print 'init cost=', cost
+
+    # set up constraint on Y_hat that all are >=0
     Y_hat_bounds = [(0, None)] * len(Y_hat)
+
+    # run optimization
     Y_hat, cost, _ = fmin_l_bfgs_b(l_cost_fun, Y_hat, l_g_cost_fun, \
-                        args=(Y, l, train_num, alpha_train, alpha_unknown), \
-                        bounds=Y_hat_bounds, callback=None)
-    print 'optimized cost=', cost
-    return Y_hat[0].reshape(Y.shape)
+                        args=(Y, l, ntrain, alpha_train, alpha_unknown), \
+                        bounds=Y_hat_bounds)
+    #print 'optimized cost=', cost
+
+    # reformat Y_hat to matrix as optimziation works on vector format
+    return Y_hat.reshape(Y.shape)
 
 def build_model2(train, valid, test, \
                  store_weather_data, \
                  valid_init=None, theta_init=None, \
                  alpha_train=1000, alpha_unknown=0.01,
                  eps=1e-5, max_iter=100):
+    """
+    the model uses logistic regression to model similarities between rows.
+    iteratively update Y_hat and similarities parameter theta.
+    """
+    # compute similarity matrix without normalization
     _,fmat = l_similarity(train, valid, test, store_weather_data, normalize=False)
     if (theta_init is None):
         theta = np.random.rand(fmat.shape[1])
     else:
         theta = theta_init
+    
+    # count the total number of rows
     ntrain, m = train.values.shape
-    nvalid, _ = valid.values.shape
-    n = ntrain + nvalid
+
+    nvalid=0
+    if valid is not None:
+        nvalid, _ = valid.values.shape
+
+    ntest=0
     if test is not None:
         ntest, _ = test.values.shape
-        n+=ntest    
+
+    n = ntrain + nvalid + ntest
+
+    # init Y and Y_hat
     Y = np.zeros((n, m))
     Y[0:train_num] = train.values
     if (valid_init is not None):
         Y[train_num:train_num + valid_num] = valid_init
     Y_hat = np.random.rand(n, m).flatten()
     
+
     err = 1000.0
     iter = 0
-    while (true):        
+    while (true):
+        # compute similarity score
         l = logistic_sim_score(theta, fmat)
+
+        # compute init total cost
         fval = l_cost_fun(Y_hat, Y, l, ntrain, alpha_train, alpha_unknown)
-        print 'init total cost=', fval    
+        print 'init total cost=', fval
+
+        # set up constraint on Y_hat that all are >=0
         Y_hat_bounds = [(0, None)] * len(Y_hat)
+
+        # run optimiaztion of Y_hat
         Y_hat, fval, _ = fmin_l_bfgs_b(l_cost_fun, Y_hat, l_g_cost_fun, \
                             args=(Y, l, ntrain, alpha_train, alpha_unknown), \
                             bounds=Y_hat_bounds, callback=None)
         Y_hat = Y_hat.reshape(Y.shape)
-        print 'total cost=' % fval
+        print 'optimized total cost=', fval
 
+        # compute init similarity cost
         fval = l_cost_fun2(theta, fmat, Y_hat)
-        print 'init theta cost=', fval
+        print 'init similarity cost=', fval
+
+        # run optimiaztion of theta
         theta, fval, _ = fmin_l_bfgs_b(l_cost_fun2, theta, g_logistic_sim_score, \
                             args=(fmat, Y_hat))
-        print 'theta cost=', fval
+        print 'optimized similarity cost=', fval
 
+        # evaluate erros
         e1, e2 = eval_model(train, valid, Y_hat)
+
         iter+=1
-        if abs(e1 - err) / err < eps or iter >= max_iter:
+
+        # stop if reach max iteration or changes is very small
+        if abs(e1 - err) / err < eps or \
+            iter >= max_iter:
             break
 
     return Y_hat, theta
 
 def eval_model(train, valid, Y_hat):
-    train_num, m = train.values.shape
-    valid_num, _ = valid.values.shape
-    t_error = fun_log_error(Y_hat[:train_num], \
-                     train.values, train_num, 1, 0)
-    v_error = fun_log_error(Y_hat[train_num:train_num + valid_num], \
-                     valid.values, valid_num, 1, 0)
-    return (t_error / train_num) ** 0.5, (v_error / valid_num) ** 0.5
+    ntrain, m = train.values.shape
+    nvalid, _ = valid.values.shape
+    t_error = fun_log_error(Y_hat[:ntrain], \
+                     train.values, ntrain, 1, 0)
+    v_error = fun_log_error(Y_hat[ntrain:ntrain + nvalid], \
+                     valid.values, nvalid, 1, 0)
+    return (t_error / ntrain) ** 0.5, (v_error / nvalid) ** 0.5
 
 def run_model2(store_data_file, store_weather_file, test_data_file):
     """
@@ -94,31 +143,128 @@ def run_model2(store_data_file, store_weather_file, test_data_file):
     """
     print "start here"
 
+    # write header to test result
+    with open('test_result.csv', 'w') as f:
+        f.write('id,units\n')
+        f.close()
+    
+    # load data
+    store_data, store_weather, test = load_data2(store_data_file, \
+          store_weather_file, test_data_file)
+
+    # compute max item sales for each store as denominator
+    store_data_max = store_data.groupby(level=1).max()
+
+    # develop training and validation set
+    train, valid = develop_valid_set2(store_data, store_weather, valid_size=70)   
+
+    # categorize testing data with a relevant but much smaller training set
+    target_set = build_target_set(train, valid, test, store_weather)
+
+    # run prediction on testing data of each category
+    for n, trn, vld, tst in target_set:
+        print "%d, train(%d), valid(%d), test(%d)" % (n, len(trn), len(vld), len(tst))
+
+        # normalize training, validing and testing data set
+        nm_trn = normalize_store_data(trn, store_data_max)
+        nm_vld = normalize_store_data(vld, store_data_max)
+        nm_tst = normalize_store_data(tst, store_data_max)
+
+        # compute similarity matrix
+        l,_ = l_similarity(nm_trn, nm_vld, nm_tst, store_weather)
+
+        v_init = None
+        Y_hat2 = None
+
+        for i in range(1):
+            # run prediction on all validation and testing data set
+            Y_hat = build_model(nm_trn, nm_vld, nm_tst, l, v_init)
+            # save the code in case the model has stacking effect -- v_init=Y_hat[len(trn):len(trn)+len(vld)]
+
+            # denormalize the sale
+            Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat, store_data_max)
+
+            # evaluate error in training and validation set
+            e1, e2 = eval_model(trn, vld, Y_hat2)
+            print "error at %d is: train(%f), valid(%f)" % (i, e1, e2)
+
+        # write results to test result
+        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv')
+
+def run_model2_1(store_data_file, store_weather_file, test_data_file):
+    """
+    same model as run_model2, but each optimization only includes one unknown row.
+    this ignores similarity constraints between unknown rows
+    """
+    print "start here"
+
+    # write header to test result
     with open('test_result.csv', 'w') as f:
         f.write('id,units\n')
         f.close()
 
+    # load data
     store_data, store_weather, test = load_data2(store_data_file, \
           store_weather_file, test_data_file)
+
+    # compute max sale for each item at each store as denominator
     store_data_max = store_data.groupby(level=1).max()
 
-    train, valid = develop_valid_set2(store_data, store_weather, valid_size=0)   
+    # develop training and validation set
+    train, valid = develop_valid_set2(store_data, store_weather, valid_size=70)   
+
+    # categorize testing data with a relevant but much smaller training set
     target_set = build_target_set(train, valid, test, store_weather)
+
+    # run prediction on testing data of each category
     for n, trn, vld, tst in target_set:
         print "%d, train(%d), valid(%d), test(%d)" % (n, len(trn), len(vld), len(tst))
+        
+        # normalize training, validing and testing data set
         nm_trn = normalize_store_data(trn, store_data_max)
         nm_vld = normalize_store_data(vld, store_data_max)
         nm_tst = normalize_store_data(tst, store_data_max)
-        l,_ = l_similarity(nm_trn, nm_vld, nm_tst, store_weather)
+
+        # compute feature matrix
+        _, m = l_similarity(nm_trn, nm_vld, nm_tst, store_weather)
+
         v_init = None
-        Y_hat2 = None
-        for i in range(1):
-            Y_hat = build_model(nm_trn, nm_vld, nm_tst, l, v_init)
-            #v_init=Y_hat[len(trn):len(trn)+len(vld)]
-            Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat, store_data_max)
-            e1, e2 = eval_model(trn, vld, Y_hat2)
-            print "error at %d is: train(%f), valid(%f)" % (i, e1, e2)
-        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv')
+
+        # init Y_hat
+        Y_hat = np.zeros((len(nm_trn)+len(nm_vld)+len(nm_tst), nm_trn.values.shape[1]))
+
+        # predicting validation data
+        helper_model2_1(nm_vld, len(nm_trn), nm_trn, m, Y_hat, store_data_max)
+
+        # predicting testing data
+        helper_model2_1(nm_tst, len(nm_trn)+len(nm_vld), nm_trn, m, Y_hat, store_data_max)
+
+        # evaluate error in training and validation set
+        e1, e2 = eval_model(trn, vld, Y_hat)
+        print "error at %d is: train(%f), valid(%f)" % (n, e1, e2)
+
+        # write results to test result
+        write_submission(trn, vld, tst, Y_hat, 'test_result.csv')        
+
+def helper_model2_1(df, offset, train, m, Y_hat, store_data_max, v_init=None):
+    # construct feature matrix with one row more than training data
+    m2=np.zeros((len(train)+1,m.shape[1]))
+
+    # copy training feature matrix
+    m2[:len(train)]=m[:len(train)]
+
+    for i in range(len(df)):        
+        m2[-1]=m[offset+i]
+        def l(i):
+            g=np.dot(m2, m2[i])
+            d=np.sum(g)
+            g=-g
+            g[i]=d+g[i]
+            return g
+        df0=df.iloc[i:i+1]
+        Y_hat0 = build_model(train, None, df0, l, v_init)
+        Y_hat1 = denormalize_store_data(train, None, df0, Y_hat0, store_data_max)
+        Y_hat[offset+i]=Y_hat1[-1]
 
 def run_model3(store_data_file, store_weather_file, test_data_file):
     """
