@@ -39,7 +39,7 @@ def compute_feature(store_weather_data, store_data):
     norm=np.sum(m*m, axis=1)**0.5
     return m/norm[:,np.newaxis]
 
-def compute_feature2(store_weather_data, store_data):    
+def compute_feature2(store_weather_data, store_data, normalize=True):    
     def f(x):
         k=x.name        
         f=compute_weather_feature(store_weather_data, k)        
@@ -52,8 +52,11 @@ def compute_feature2(store_weather_data, store_data):
         return pd.Series(f)
     store_feature_data=store_data.apply(lambda x: f(x), axis=1)
     m=store_feature_data.values*1.0
-    norm=np.sum(m*m, axis=1)**0.5    
-    return m/norm[:,np.newaxis]   
+    if (normalize):
+        norm=np.sum(m*m, axis=1)**0.5    
+        return m/norm[:,np.newaxis]
+    else:
+        return m
 
 def is_rain0(day): return 1 if day['preciptotal']=='T' \
         or (is_numeric(day['preciptotal']) and float(day['preciptotal'])<=0.4) else 0

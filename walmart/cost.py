@@ -1,11 +1,16 @@
 import numpy as np
 import pandas as pd
 from feature import compute_feature2
+from similarity import logistic_sim_score
 
 def l_cost_fun(Y_hat, Y, l, train_num, alpha_train, alpha_unknown):
     Y_hat=Y_hat.reshape(Y.shape)
     return l_fun_sim(Y_hat, l) \
               + fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown)
+
+def l_cost_fun2(theta, m, Y_hat):
+    l=logistic_sim_score(theta, m)
+    return l_fun_sim(Y_hat, l)
 
 def cost_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
     Y_hat=Y_hat.reshape(Y.shape)

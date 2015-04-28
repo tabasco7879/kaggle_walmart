@@ -16,7 +16,7 @@ def similarity(train, valid, test, store_weather_data):
     L=np.eye(G.shape[0])*D-G
     return L, m
 
-def l_similarity(train, valid, test, store_weather_data):    
+def l_similarity(train, valid, test, store_weather_data, normalize=True):    
     store_train=store_weather_data.loc[train.index]
     store_valid=store_weather_data.loc[valid.index]
     store_data=pd.concat([store_train, store_valid])
@@ -24,7 +24,7 @@ def l_similarity(train, valid, test, store_weather_data):
         store_test=store_weather_data.loc[test.index]
         store_data=pd.concat([store_data, store_test])
     df=store_weather_data.loc[store_data.index]    
-    m=compute_feature2(df, store_data)
+    m=compute_feature2(df, store_data, normalize)
     def l(i):
         g=np.dot(m, m[i])
         d=np.sum(g)
@@ -33,7 +33,7 @@ def l_similarity(train, valid, test, store_weather_data):
         return g
     return l, m
 
-def logistic_sim_score(m, theta):
+def logistic_sim_score(theta, m):
     """
     i: index of the row
     m: feature matrix
@@ -46,7 +46,7 @@ def logistic_sim_score(m, theta):
         return a/(1+a)
     return l
 
-def g_logistic_sim_score(Y_hat, m, theta):
+def g_logistic_sim_score(theta, m, Y_hat):
     """
     Y_hat: current Y_hat
     m: feature matrix
