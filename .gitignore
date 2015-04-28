@@ -1,0 +1,6 @@
+*.pyc
+*.suo
+*.txt
+*.csv
+*.7z
+/obj
