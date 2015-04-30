@@ -410,6 +410,6 @@ def write_submission(train, valid, test, Y_hat, test_result_file):
                 f.write(s)
             row+=1
 
-run_model3('C:/Users/chentao/skydrive/working/kaggle_walmart/data/store_train.txt', \
-          'C:/Users/chentao/skydrive/working/kaggle_walmart/data/store_weather.txt', \
-          'C:/Users/chentao/skydrive/working/kaggle_walmart/data/test.csv')
+run_model3('C:/Users/tao.chen/skydrive/working/kaggle_walmart/data/store_train.txt', \
+          'C:/Users/tao.chen/skydrive/working/kaggle_walmart/data/store_weather.txt', \
+          'C:/Users/tao.chen/skydrive/working/kaggle_walmart/data/test.csv')

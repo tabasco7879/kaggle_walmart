@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs
+from scipy.spatial import distance
 from similarity import sim, sim_func, l_sim, l_sim_func
 from cost import cost_fun, g_cost_fun, cost_fun3, g_cost_fun3, fun_log_error
 from utils import normalize
@@ -105,13 +106,9 @@ def build_model3(train, valid, test, \
 
 def compute_D(Y_hat, Y_shape):
     """
-    compute (x_i-x_j)^T(x_i-x_j)
+    compute (x_i-x_j)^T(x_i-x_j)    
     """
     Y_hat=Y_hat.reshape(Y_shape)
-    n=Y_hat.shape[0]
-    D=np.zeros((n,n))
-    for i in range(n):
-        d0=(Y_hat-Y_hat[i])**2           
-        d0=np.sum(d0, axis=1) # shape=nx1
-        D[i]=d0
+    D=distance.cdist(Y_hat, Y_hat, 'sqeuclidean')
     return D
+

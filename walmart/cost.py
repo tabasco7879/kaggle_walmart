@@ -89,7 +89,7 @@ def g_fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown):
     g_error[train_num:]=g_error[train_num:]*alpha_unknown
     return g_error
 
-def cost_fun3(hidden, hidden_shape, fmat, Y_hat, Y_shape):
+def cost_fun3(hidden, hidden_shape, fmat, Y_hat, Y_shape, D=None):
     Y_hat=Y_hat.reshape(Y_shape)
     hidden=hidden.reshape(hidden_shape)
     offset=fmat.shape[1]-hidden_shape[1]
@@ -98,21 +98,21 @@ def cost_fun3(hidden, hidden_shape, fmat, Y_hat, Y_shape):
     l=l_sim_func(nm_fmat)
     return l_fun_sim(Y_hat, l)
 
-def g_cost_fun3(hidden, hidden_shape, fmat, Y_hat, Y_shape):
+def g_cost_fun3(hidden, hidden_shape, fmat, Y_hat, Y_shape, D):
     Y_hat=Y_hat.reshape(Y_shape)
     hidden=hidden.reshape(hidden_shape)
     offset=fmat.shape[1]-hidden_shape[1]
     fmat[:,offset:]=hidden
     _, nm=normalize(fmat) # shape=nx1
     n= Y_shape[0]
-    g=np.zeros(hidden_shape)
+    g=np.zeros(hidden_shape)    
+    Fmat=np.dot(fmat,fmat.T)
     for i in range(n):
-        d0=(Y_hat-Y_hat[i])**2
-        if len(d0.shape)>1:
-            d0=np.sum(d0, axis=1) # shape=nx1
-        c0=1/((nm[i]**2)*nm) # shape=nx1      
+        d0=D[i]
+        c0=1/((nm[i]**2)*nm) # shape=nx1
         c1=fmat[:, offset:] * nm[i] # shape=nxm        
-        c2=np.outer(np.dot(fmat,fmat[i])/nm[i], fmat[i, offset:]) # shape=nxm        
+        c2=np.outer(Fmat[i]/nm[i], fmat[i, offset:]) # shape=nxm        
         g[i]=np.sum((c1-c2)*(d0*c0)[:, np.newaxis], axis=0)  # shape
     return g.flatten()
+
         
