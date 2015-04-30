@@ -338,7 +338,7 @@ def run_model3(store_data_file, store_weather_file, test_data_file):
     store_data_max = store_data.groupby(level=1).max()
 
     # develop training and validation set
-    train, valid = develop_valid_set2(store_data, store_weather, valid_size=100)   
+    train, valid = develop_valid_set2(store_data, store_weather, valid_size=0)   
 
     # categorize testing data with a relevant but much smaller training set
     target_set = build_target_set(train, valid, test, store_weather)
