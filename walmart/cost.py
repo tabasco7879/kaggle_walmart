@@ -1,16 +1,19 @@
 import numpy as np
 import pandas as pd
 from feature import compute_feature2
-from similarity import logistic_sim_score
+from similarity import l_logistic_sim, sim_func, l_sim_func
+from utils import normalize
 
 def l_cost_fun(Y_hat, Y, l, train_num, alpha_train, alpha_unknown):
     Y_hat=Y_hat.reshape(Y.shape)
     return l_fun_sim(Y_hat, l) \
               + fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown)
 
-def l_cost_fun2(theta, m, Y_hat):
-    l=logistic_sim_score(theta, m)
+def l_cost_fun2(theta, m, Y_hat, Y):
+    Y_hat=Y_hat.reshape(Y.shape)
+    l=l_logistic_sim(theta, m)
     return l_fun_sim(Y_hat, l)
+
 
 def cost_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
     Y_hat=Y_hat.reshape(Y.shape)
@@ -18,10 +21,14 @@ def cost_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
               + fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown)
 
 def l_fun_sim(Y_hat, l):
-    n, _ =Y_hat.shape
+    n=Y_hat.shape[0]
     sim=0
-    for i in range(n):
-        sim+=np.dot(l(i), Y_hat).dot(Y_hat[i])
+    if len(Y_hat.shape)>1:
+        for i in range(n):         
+            sim+=np.dot(l(i), Y_hat).dot(Y_hat[i])
+    else:
+        for i in range(n):         
+            sim+=np.dot(l(i), Y_hat)*Y_hat[i]
     return sim
 
 def fun_sim(Y_hat, L):
@@ -50,7 +57,7 @@ def l_g_cost_fun(Y_hat, Y, l, train_num, alpha_train, alpha_unknown):
 def g_cost_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
     Y_hat=Y_hat.reshape(Y.shape)
     g=(g_fun_sim(Y_hat, L)+ \
-        g_fun_error(Y_hat, Y, train_num, alpha_train, alpha_unknown))
+        g_fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown))
     return g.flatten()
 
 def l_g_fun_sim(Y_hat, l):
@@ -81,3 +88,31 @@ def g_fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown):
     g_error[0:train_num]=g_error[0:train_num]*alpha_train
     g_error[train_num:]=g_error[train_num:]*alpha_unknown
     return g_error
+
+def cost_fun3(hidden, hidden_shape, fmat, Y_hat, Y_shape):
+    Y_hat=Y_hat.reshape(Y_shape)
+    hidden=hidden.reshape(hidden_shape)
+    offset=fmat.shape[1]-hidden_shape[1]
+    fmat[:,offset:]=hidden
+    nm_fmat,_=normalize(fmat)
+    l=l_sim_func(nm_fmat)
+    return l_fun_sim(Y_hat, l)
+
+def g_cost_fun3(hidden, hidden_shape, fmat, Y_hat, Y_shape):
+    Y_hat=Y_hat.reshape(Y_shape)
+    hidden=hidden.reshape(hidden_shape)
+    offset=fmat.shape[1]-hidden_shape[1]
+    fmat[:,offset:]=hidden
+    _, nm=normalize(fmat) # shape=nx1
+    n= Y_shape[0]
+    g=np.zeros(hidden_shape)
+    for i in range(n):
+        d0=(Y_hat-Y_hat[i])**2
+        if len(d0.shape)>1:
+            d0=np.sum(d0, axis=1) # shape=nx1
+        c0=1/((nm[i]**2)*nm) # shape=nx1      
+        c1=fmat[:, offset:] * nm[i] # shape=nxm        
+        c2=np.outer(np.dot(fmat,fmat[i])/nm[i], fmat[i, offset:]) # shape=nxm        
+        g[i]=np.sum((c1-c2)*(d0*c0)[:, np.newaxis], axis=0)  # shape
+    return g.flatten()
+        

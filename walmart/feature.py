@@ -39,9 +39,9 @@ def compute_feature(store_weather_data, store_data):
     norm=np.sum(m*m, axis=1)**0.5
     return m/norm[:,np.newaxis]
 
-def compute_feature2(store_weather_data, store_data, normalize=True):    
+def compute_feature2(store_weather_data, store_data, hidden_feature=None):    
     def f(x):
-        k=x.name        
+        k=x.name
         f=compute_weather_feature(store_weather_data, k)        
         for d in pd.date_range(end=k[0], periods=4)[:-1]:
             f0=compute_weather_feature(store_weather_data, (d, k[1]))
@@ -51,12 +51,14 @@ def compute_feature2(store_weather_data, store_data, normalize=True):
             f=f+f0        
         return pd.Series(f)
     store_feature_data=store_data.apply(lambda x: f(x), axis=1)
-    m=store_feature_data.values*1.0
-    if (normalize):
-        norm=np.sum(m*m, axis=1)**0.5    
-        return m/norm[:,np.newaxis]
+    n,m=store_feature_data.values.shape
+    if hidden_feature is None:
+        fmat=np.zeros((n,m))
     else:
-        return m
+        fmat=np.zeros((n,m+hidden_feature.shape[1]))
+        fmat[:,m:]=hidden_feature
+    fmat[:,:m]=store_feature_data.values*1.0    
+    return fmat
 
 def is_rain0(day): return 1 if day['preciptotal']=='T' \
         or (is_numeric(day['preciptotal']) and float(day['preciptotal'])<=0.4) else 0

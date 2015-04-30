@@ -28,6 +28,9 @@
     <Compile Include="cost.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="models.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="similarity.py" />
     <Compile Include="utils.py">
       <SubType>Code</SubType>
