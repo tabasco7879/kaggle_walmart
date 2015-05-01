@@ -4,7 +4,7 @@ from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs
 import random
 from utils import is_numeric
 from cost import cost_fun, l_cost_fun, l_cost_fun2, l_g_cost_fun, g_cost_fun, fun_log_error, l_fun_sim, fun_sim
-from walmart2 import load_data2, normalize_store_data, develop_valid_set2, build_target_set, denormalize_store_data
+from walmart2 import load_data2, normalize_store_data, develop_valid_set2, build_target_set, build_target_set2, denormalize_store_data
 from similarity import sim, l_sim, l_logistic_sim, g_logistic_sim
 from sklearn import linear_model
 from models import eval_model, build_model3
@@ -341,7 +341,7 @@ def run_model3(store_data_file, store_weather_file, test_data_file):
     train, valid = develop_valid_set2(store_data, store_weather, valid_size=0)   
 
     # categorize testing data with a relevant but much smaller training set
-    target_set = build_target_set(train, valid, test, store_weather)
+    target_set = build_target_set2(train, valid, test, store_weather)
 
     # run prediction on testing data of each category
     for n, trn, vld, tst in target_set:

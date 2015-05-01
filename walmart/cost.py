@@ -84,7 +84,7 @@ def g_fun_log_error(Y_hat, Y, train_num, alpha_train, alpha_unknown):
     return g_error
 
 def g_fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown):
-    g_error=2*(Y_hat-Y)*Y_hat
+    g_error=2*(Y_hat-Y)
     g_error[0:train_num]=g_error[0:train_num]*alpha_train
     g_error[train_num:]=g_error[train_num:]*alpha_unknown
     return g_error

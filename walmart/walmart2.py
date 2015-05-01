@@ -127,3 +127,51 @@ def build_target_set(train, valid, test, store_weather, pre=3, aft=3):
         if (len(valid0)>0 or len(test0)>0):
             target_set.append((i, train0, valid0, test0))
     return target_set
+
+def build_target_set2(train, valid, test, store_weather, \
+                      start_year=2013, start_month=4, \
+                      end_year=2014, end_month=10, \
+                      pre=3, aft=3):
+    target_year=start_year
+    target_month=start_month
+    while target_year<=end_year and target_month<end_month:
+        target_year0=target_year+(target_month-2)/12
+        target_month0=(target_month-2)%12+1
+        target_year1=target_year+target_month/12
+        target_month1=(target_month)%12+1
+        def f_trn(x):
+            k=x.name
+            if k[0].year in [target_year, target_year-1, target_year+1] and \
+                k[0].month==target_month:
+                return True
+            if k[0].year==target_year0 and k[0].month==target_month0:
+                return True
+            if k[0].year==target_year1 and k[0].month==target_month1:
+                return True
+            if store_weather.loc[k]['isweatherday']==1:
+                return True
+            for d in pd.date_range(end=k[0], periods=pre+1)[:-1]:            
+                if ((d, k[1]) in store_weather.index) and \
+                   (store_weather.loc[(d, k[1])]['isweatherday'])==1:
+                    return True                
+            for d in pd.date_range(start=k[0], periods=aft+1)[1:]:
+                if ((d, k[1]) in store_weather.index) and \
+                   (store_weather.loc[(d, k[1])]['isweatherday'])==1:
+                    return True
+            return False
+    
+        def f_tst(x):
+            k=x.name
+            return k[0].year==target_year and \
+                k[0].month==target_month            
+            
+        train_idx=train.apply(lambda x: f_trn(x), axis=1)
+        test_idx=test.apply(lambda x: f_tst(x), axis=1)
+       
+        train0=train[train_idx]
+        test0=test[test_idx]
+
+        yield (target_year*12+target_month, train0, valid, test0)
+
+        target_year=target_year1
+        target_month=target_month1
