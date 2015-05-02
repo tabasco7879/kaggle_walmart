@@ -3,53 +3,13 @@ import numpy as np
 from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs
 import random
 from utils import is_numeric
-from cost import cost_fun, l_cost_fun, l_cost_fun2, l_g_cost_fun, g_cost_fun, fun_log_error, l_fun_sim, fun_sim
+from cost import cost_fun, l_cost_fun, l_cost_fun2, l_g_cost_fun, g_cost_fun, fun_log_error, l_fun_sim, fun_sim, fun_log_error_a
 from walmart2 import load_data2, normalize_store_data, develop_valid_set2, build_target_set, build_target_set2, denormalize_store_data
 from similarity import sim, l_sim, l_logistic_sim, g_logistic_sim
 from sklearn import linear_model
-from models import eval_model, build_model3
+from models import eval_model, build_model1, build_model3, build_model5
+import os.path
     
-def build_model(train, valid, test, l, \
-                valid_init=None, alpha_train=1000, alpha_unknown=0.01):
-    # count the total number of rows
-    ntrain, m = train.values.shape
-
-    nvalid=0
-    if valid is not None:
-        nvalid, _ = valid.values.shape
-
-    ntest=0
-    if test is not None:
-        ntest, _ = test.values.shape
-
-    n = ntrain + nvalid + ntest
-
-    # init Y
-    Y = np.zeros((n, m))
-    Y[0:ntrain] = train.values
-
-    if valid_init is not None:
-        Y[ntrain:ntrain + nvalid] = valid_init
-
-    # randomly init Y_hat
-    Y_hat = np.random.rand(n, m).flatten()    
-
-    # compute init cost
-    cost = l_cost_fun(Y_hat, Y, l, ntrain, alpha_train, alpha_unknown)
-    print 'init cost=', cost
-
-    # set up constraint on Y_hat that all are >=0
-    Y_hat_bounds = [(0, None)] * len(Y_hat)
-
-    # run optimization
-    Y_hat, cost, _ = fmin_l_bfgs_b(l_cost_fun, Y_hat, l_g_cost_fun, \
-                        args=(Y, l, ntrain, alpha_train, alpha_unknown), \
-                        bounds=Y_hat_bounds)
-    print 'optimized cost=', cost
-    
-    # reformat Y_hat to matrix as optimziation works on vector format
-    return Y_hat.reshape(Y.shape)
-
 def build_model2(train, valid, test, \
                  store_weather_data, \
                  valid_init=None, theta_init=None, \
@@ -147,7 +107,7 @@ def build_model2(train, valid, test, \
 
     return Y_hat.reshape(Y.shape), theta
 
-def run_model1(store_data_file, store_weather_file, test_data_file):
+def run_model1(store_data_file, store_weather_file, test_data_file, model_param):
     """
     the model uses the square error to measure the difference between Y_hat and
     Y, and uses similarity to regulate Y_hat, that is, if one day's sale can be
@@ -169,10 +129,10 @@ def run_model1(store_data_file, store_weather_file, test_data_file):
     store_data_max = store_data.groupby(level=1).max()
 
     # develop training and validation set
-    train, valid = develop_valid_set2(store_data, store_weather, valid_size=0)   
+    train, valid = develop_valid_set2(store_data, store_weather, valid_size=100)   
 
     # categorize testing data with a relevant but much smaller training set
-    target_set = build_target_set(train, valid, test, store_weather)
+    target_set = build_target_set2(train, valid, test, store_weather)
 
     # run prediction on testing data of each category
     for n, trn, vld, tst in target_set:
@@ -182,17 +142,17 @@ def run_model1(store_data_file, store_weather_file, test_data_file):
         nm_trn = normalize_store_data(trn, store_data_max)
         nm_vld = normalize_store_data(vld, store_data_max)
         nm_tst = normalize_store_data(tst, store_data_max)
-
-        # compute similarity matrix
-        l,_ = l_sim(nm_trn, nm_vld, nm_tst, store_weather)
-
+        
         v_init = None
         Y_hat2 = None
 
         for i in range(1):
             # run prediction on all validation and testing data set
-            Y_hat = build_model(nm_trn, nm_vld, nm_tst, l, v_init)
-            # save the code in case the model has stacking effect -- v_init=Y_hat[len(trn):len(trn)+len(vld)]
+            Y_hat = build_model1(nm_trn, nm_vld, nm_tst, store_weather, \
+                                 valid_init=v_init, alpha_train=model_param)
+
+            # save the code in case the model has stacking effect
+            #v_init=Y_hat[len(trn):]
 
             # denormalize the sale
             Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat, store_data_max)
@@ -202,7 +162,7 @@ def run_model1(store_data_file, store_weather_file, test_data_file):
             print "error at %d is: train(%f), valid(%f)" % (i, e1, e2)
 
         # write results to test result
-        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv')
+        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv', 'valid_result')
 
 def run_model1v1(store_data_file, store_weather_file, test_data_file):
     """
@@ -322,7 +282,7 @@ def run_model2(store_data_file, store_weather_file, test_data_file):
         # write results to test result
         write_submission(trn, vld, tst, Y_hat2, 'test_result.csv')
 
-def run_model3(store_data_file, store_weather_file, test_data_file):
+def run_model3(store_data_file, store_weather_file, test_data_file, model_param=1):
     print "start here"
 
     # write header to test result
@@ -338,11 +298,12 @@ def run_model3(store_data_file, store_weather_file, test_data_file):
     store_data_max = store_data.groupby(level=1).max()
 
     # develop training and validation set
-    train, valid = develop_valid_set2(store_data, store_weather, valid_size=0)   
+    train, valid = develop_valid_set2(store_data, store_weather, valid_size=100)   
 
     # categorize testing data with a relevant but much smaller training set
-    target_set = build_target_set2(train, valid, test, store_weather)
-
+    target_set = build_target_set2(train, valid, test, store_weather, \
+                                   end_year=2013, end_month=4)
+    
     # run prediction on testing data of each category
     for n, trn, vld, tst in target_set:
         print "%d, train(%d), valid(%d), test(%d)" % (n, len(trn), len(vld), len(tst))
@@ -352,7 +313,7 @@ def run_model3(store_data_file, store_weather_file, test_data_file):
         nm_vld = normalize_store_data(vld, store_data_max)
         nm_tst = normalize_store_data(tst, store_data_max)
 
-        Y_hat=build_model3(nm_trn, nm_vld, nm_tst, store_weather)
+        Y_hat=build_model3(nm_trn, nm_vld, nm_tst, store_weather, alpha_train=model_param)
 
         # denormalize the sale
         Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat, store_data_max)
@@ -362,9 +323,9 @@ def run_model3(store_data_file, store_weather_file, test_data_file):
         print "error is: train(%f), valid(%f)" % (e1, e2)
 
         # write results to test result
-        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv')
+        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv', 'valid_result')
 
-def run_model4(store_data_file, store_weather_file, test_data_file):
+def run_model4(store_data_file, store_weather_file, test_data_file, model_param=1):
     """
     ridge regression
     """
@@ -376,31 +337,94 @@ def run_model4(store_data_file, store_weather_file, test_data_file):
 
     store_data, store_weather, test = load_data2(store_data_file, \
           store_weather_file, test_data_file)
+
     store_data_max = store_data.groupby(level=1).max()
-    train, valid = develop_valid_set2(store_data, store_weather, valid_size=70)    
-    target_set = build_target_set(train, valid, test, store_weather)
+
+    train, valid = develop_valid_set2(store_data, store_weather, valid_size=100)    
+
+    target_set = build_target_set2(train, valid, test, store_weather)
+
     for n, trn, vld, tst in target_set:
         print "%d, train(%d), valid(%d), test(%d)" % (n, len(trn), len(vld), len(tst))
         nm_trn = normalize_store_data(trn, store_data_max)
         nm_vld = normalize_store_data(vld, store_data_max)
         nm_tst = normalize_store_data(tst, store_data_max)
-        _,m = l_sim(nm_trn, nm_vld, nm_tst, store_weather)
+
+        _,fmat = sim(nm_trn, nm_vld, nm_tst, store_weather)
+
         item_count = nm_trn.values.shape[1]
         Y_hat = np.zeros((len(nm_trn) + len(nm_vld) + len(nm_tst), item_count))
-        X = m[:len(nm_trn)]
+        X = fmat[:len(nm_trn)]
+
         for i in range(item_count):            
             Y = nm_trn.values[:,i]
-            clf = linear_model.Ridge(alpha=1.0)
+            clf = linear_model.Ridge(alpha=model_param)
             clf.fit(X, Y)
-            Y_hat[:,i] = clf.predict(m)
+            Y_hat[:,i] = clf.predict(fmat)
+
         Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat, store_data_max)
+
         e1, e2 = eval_model(trn, vld, Y_hat2)
         print "error is: train(%f), valid(%f)" % (e1, e2)
-        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv')
 
-def write_submission(train, valid, test, Y_hat, test_result_file):
+        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv', 'valid_result')
+
+def run_model5(store_data_file, store_weather_file, test_data_file, model_param=1):
+    print "start here"
+
+    # write header to test result
+    with open('test_result.csv', 'w') as f:
+        f.write('id,units\n')
+        f.close()
+    
+    # load data
+    store_data, store_weather, test = load_data2(store_data_file, \
+          store_weather_file, test_data_file)
+
+    # compute max item sales for each store as denominator
+    store_data_max = store_data.groupby(level=1).max()
+
+    # develop training and validation set
+    train, valid = develop_valid_set2(store_data, store_weather, valid_size=100)   
+
+    # categorize testing data with a relevant but much smaller training set
+    target_set = build_target_set2(train, valid, test, store_weather)
+    
+    # run prediction on testing data of each category
+    for n, trn, vld, tst in target_set:
+        print "%d, train(%d), valid(%d), test(%d)" % (n, len(trn), len(vld), len(tst))
+
+        # normalize training, validing and testing data set
+        nm_trn = normalize_store_data(trn, store_data_max)
+        nm_vld = normalize_store_data(vld, store_data_max)
+        nm_tst = normalize_store_data(tst, store_data_max)
+
+        Y_hat=build_model5(nm_trn, nm_vld, nm_tst, store_weather, alpha_train=model_param)
+
+        # denormalize the sale
+        Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat, store_data_max)
+
+        # evaluate error in training and validation set
+        e1, e2 = eval_model(trn, vld, Y_hat2)
+        print "error is: train(%f), valid(%f)" % (e1, e2)
+
+        # write results to test result
+        write_submission(trn, vld, tst, Y_hat2, 'test_result.csv', 'valid_result')
+
+def write_submission(train, valid, test, Y_hat, test_result_file, valid_result_file=None):
     row = len(train) + len(valid)
     col = Y_hat.shape[1]
+    if valid_result_file is not None:
+        ve = fun_log_error_a(Y_hat[len(train):len(train) + len(valid)], \
+                             valid.values, len(valid), 1, 0)
+        valid_error=pd.DataFrame(valid, copy=True)
+        valid_error[:]=ve
+        valid_num=0
+        valid_file=valid_result_file
+        while (os.path.exists(valid_file+'.csv')):        
+            valid_file='%s%02d'%(valid_result_file, valid_num)
+            valid_num+=1
+        valid_error.to_csv(valid_file+'.csv')
     with open(test_result_file, 'a') as f:
         for x in test.index:
             item = test.loc[x]
@@ -410,6 +434,23 @@ def write_submission(train, valid, test, Y_hat, test_result_file):
                 f.write(s)
             row+=1
 
-run_model3('C:/Users/tao.chen/skydrive/working/kaggle_walmart/data/store_train.txt', \
-          'C:/Users/tao.chen/skydrive/working/kaggle_walmart/data/store_weather.txt', \
-          'C:/Users/tao.chen/skydrive/working/kaggle_walmart/data/test.csv')
+def run_validation(run_model_fun, \
+                   store_data_file, store_weather_file, test_data_file, \
+                   model_params=None, runs=1):
+    if model_params is not None:
+        for p in model_params:
+            for i in range(runs):
+                run_model_fun(store_data_file, \
+                              store_weather_file, \
+                              test_data_file, \
+                              p)
+    else:
+        run_model_fun(store_data_file, \
+                      store_weather_file, \
+                      test_data_file)    
+            
+run_validation(run_model5,
+           '../../data/store_train.txt', \
+           '../../data/store_weather.txt', \
+           '../../data/test.csv', \
+           [1, 10, 100, 1000])
