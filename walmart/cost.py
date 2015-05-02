@@ -14,7 +14,6 @@ def l_cost_fun2(theta, m, Y_hat, Y):
     l=l_logistic_sim(theta, m)
     return l_fun_sim(Y_hat, l)
 
-
 def cost_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
     Y_hat=Y_hat.reshape(Y.shape)
     return fun_sim(Y_hat, L) \
@@ -35,12 +34,16 @@ def fun_sim(Y_hat, L):
     return np.trace(Y_hat.T.dot(L).dot(Y_hat))
 
 def fun_log_error(Y_hat, Y, train_num, alpha_train, alpha_unknown):
+    cost_Y_hat=fun_log_error_a(Y_hat, Y, train_num, alpha_train, alpha_unknown)    
+    return np.sum(cost_Y_hat)
+
+def fun_log_error_a(Y_hat, Y, train_num, alpha_train, alpha_unknown):
     log_Y_hat=np.log(Y_hat+1)
     log_Y=np.log(Y+1)
     cost_Y_hat=(log_Y_hat-log_Y)**2
     cost_Y_hat[0:train_num]=cost_Y_hat[0:train_num]*alpha_train
     cost_Y_hat[train_num:]=cost_Y_hat[train_num:]*alpha_unknown
-    return np.sum(cost_Y_hat)
+    return cost_Y_hat
 
 def fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown):
     cost_Y_hat=(Y_hat-Y)**2
@@ -115,4 +118,26 @@ def g_cost_fun3(hidden, hidden_shape, fmat, Y_hat, Y_shape, D):
         g[i]=np.sum((c1-c2)*(d0*c0)[:, np.newaxis], axis=0)  # shape
     return g.flatten()
 
-        
+def cost_fun5(fmat_weight, fmat, Y_hat, Y_shape, D=None):
+    Y_hat=Y_hat.reshape(Y_shape)
+    fmat_weight=fmat_weight.reshape(fmat.shape)
+    working_fmat=fmat_weight * fmat
+    nm_fmat,_=normalize(working_fmat)
+    l=l_sim_func(nm_fmat)
+    return l_fun_sim(Y_hat, l)
+
+def g_cost_fun5(fmat_weight, fmat, Y_hat, Y_shape, D):
+    Y_hat=Y_hat.reshape(Y_shape)
+    fmat_weight=fmat_weight.reshape(fmat.shape)
+    working_fmat=fmat_weight * fmat
+    _, nm=normalize(working_fmat) # shape=nx1
+    n= Y_shape[0]
+    g=np.zeros(fmat.shape)    
+    Fmat=np.dot(working_fmat,working_fmat.T)
+    for i in range(n):
+        d0=D[i]
+        c0=1/((nm[i]**2)*nm) # shape=nx1
+        c1=fmat[i] * working_fmat * nm[i] # shape=nxm        
+        c2=np.outer(Fmat[i]/nm[i], fmat[i]*working_fmat[i]) # shape=nxm        
+        g[i]=np.sum((c1-c2)*(d0*c0)[:, np.newaxis], axis=0)  # shape
+    return g.flatten()
