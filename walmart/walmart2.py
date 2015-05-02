@@ -134,7 +134,7 @@ def build_target_set2(train, valid, test, store_weather, \
                       pre=3, aft=3):
     target_year=start_year
     target_month=start_month
-    while target_year<=end_year and target_month<end_month:
+    while target_year*12+target_month<=end_year*12+end_month:
         target_year0=target_year+(target_month-2)/12
         target_month0=(target_month-2)%12+1
         target_year1=target_year+target_month/12
