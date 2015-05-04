@@ -23,7 +23,7 @@ def compute_feature(store_weather_data, store_data):
     for k in store_data.index:
         # store feature
         f=[0]*45
-        store_id=k[1]                
+        store_id=k[1]
         f[store_id-1]=1
 
         f0=compute_weather_feature(store_weather_data, k)
@@ -33,27 +33,27 @@ def compute_feature(store_weather_data, store_data):
             f=f+f0
         for d in pd.date_range(start=k[0], periods=4)[1:]:
             f0=compute_weather_feature(store_weather_data, (d, k[1]))
-            f=f+f0        
+            f=f+f0
         feature_mat.append(f)
     m=np.array(feature_mat)*1.0
     norm=np.sum(m*m, axis=1)**0.5
     return m/norm[:,np.newaxis]
 
-def compute_feature2(store_weather_data, store_data, hidden_feature=None):    
+def compute_feature2(store_weather_data, store_data, hidden_feature=None):
     def f(x):
-        k=x.name        
+        k=x.name
         fmnth=[0]*12
         fmnth[k[0].month-1]=1
         fwkdy=[0]*7
         fwkdy[k[0].weekday()]=1
 
-        fwthr=compute_weather_feature(store_weather_data, k)        
+        fwthr=compute_weather_feature(store_weather_data, k)
         for d in pd.date_range(end=k[0], periods=4)[:-1]:
             f=compute_weather_feature(store_weather_data, (d, k[1]))
             fwthr=fwthr+f
         for d in pd.date_range(start=k[0], periods=4)[1:]:
             f=compute_weather_feature(store_weather_data, (d, k[1]))
-            fwthr=fwthr+f        
+            fwthr=fwthr+f
         return pd.Series(fmnth+fwkdy+fwthr)
     store_feature_data=store_data.apply(lambda x: f(x), axis=1)
     n,m=store_feature_data.values.shape
@@ -62,7 +62,7 @@ def compute_feature2(store_weather_data, store_data, hidden_feature=None):
     else:
         fmat=np.zeros((n,m+hidden_feature.shape[1]))
         fmat[:,m:]=hidden_feature
-    fmat[:,:m]=store_feature_data.values*1.0    
+    fmat[:,:m]=store_feature_data.values*1.0
     return fmat
 
 def is_rain0(day): return 1 if 'RA' in day['codesum'] and \
@@ -143,7 +143,7 @@ def is_BC(day): return 1 if 'BC' in day['codesum'] else 0
 def is_BL(day): return 1 if 'BL' in day['codesum'] else 0
 
 def is_VC(day): return 1 if 'VC' in day['codesum'] else 0
-        
+
 def compute_weather_feature(store_weather_data, k):
     funs=[is_rain0, is_rain1, is_rain2, is_rain3, is_rain4, \
           is_snow0, is_snow1, is_snow2, is_snow3, is_snow4, \
@@ -153,7 +153,7 @@ def compute_weather_feature(store_weather_data, k):
           is_MI, is_BC, is_BL, is_VC]
 
     if k in store_weather_data.index:
-        f=[fun(store_weather_data.loc[k]) for fun in funs]        
+        f=[fun(store_weather_data.loc[k]) for fun in funs]
         return f
     else:
         f=[0]*len(funs)

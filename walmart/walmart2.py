@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import random
+from sklearn.cluster import k_means
 
 def load_data2(store_data_file, store_weather_file, test_data_file):
     store_data=pd.read_csv(store_data_file, header=0, \
@@ -17,7 +18,7 @@ def load_data2(store_data_file, store_weather_file, test_data_file):
     store_data.sortlevel(inplace=True)
     store_weather.sortlevel(inplace=True)
     test_data.sortlevel(inplace=True)
-    return (store_data, store_weather, test_data)    
+    return (store_data, store_weather, test_data)
 
 def normalize_store_data(store_data, store_data_max):
     def f(x):
@@ -25,17 +26,22 @@ def normalize_store_data(store_data, store_data_max):
         norm=store_data_max.loc[store_nbr]
         n=x.values.astype('float64')/norm
         n[np.isnan(n)]=0.
-        return n    
+        return n
     norm_store_data=store_data.apply(lambda x: f(x), axis=1)
     return norm_store_data
 
-def denormalize_store_data(train, valid, test, Y_hat, store_data_max):        
+def denormalize_store_data(train, valid, test, Y_hat, store_data_max, column=None):
     def f(x):
         _, store_nbr=x.name
-        norm=store_data_max.loc[store_nbr]
+        if (column is not None):
+            norm=store_data_max.loc[store_nbr][column]
+        else:
+            norm=store_data_max.loc[store_nbr]
         return norm
     # count the total number of rows
     ntrain, m = train.values.shape
+    if column is not None:
+        m=1
 
     nvalid=0
     if valid is not None:
@@ -50,17 +56,27 @@ def denormalize_store_data(train, valid, test, Y_hat, store_data_max):
 
     # find norm for each row of training data
     train_norm=train.apply(lambda x: f(x), axis=1).values
-    Y_hat2[:ntrain]=Y_hat[:ntrain]*train_norm
+
+    if column is not None:
+        Y_hat2[:ntrain]=Y_hat[:ntrain]*train_norm[:,np.newaxis]
+    else:
+        Y_hat2[:ntrain]=Y_hat[:ntrain]*train_norm
 
     # denomalize validation data
     if(nvalid>0):
         valid_norm=valid.apply(lambda x: f(x), axis=1).values
-        Y_hat2[ntrain:ntrain+nvalid]=Y_hat[ntrain:ntrain+nvalid]*valid_norm
+        if column is not None:
+            Y_hat2[ntrain:ntrain+nvalid]=Y_hat[ntrain:ntrain+nvalid]*valid_norm[:,np.newaxis]
+        else:
+            Y_hat2[ntrain:ntrain+nvalid]=Y_hat[ntrain:ntrain+nvalid]*valid_norm
 
     # denomalize testing data
     if(ntest>0):
         test_norm=test.apply(lambda x: f(x), axis=1).values
-        Y_hat2[ntrain+nvalid:]=Y_hat[ntrain+nvalid:]*test_norm
+        if column is not None:
+            Y_hat2[ntrain+nvalid:]=Y_hat[ntrain+nvalid:]*test_norm[:,np.newaxis]
+        else:
+            Y_hat2[ntrain+nvalid:]=Y_hat[ntrain+nvalid:]*test_norm
 
     # update any less than 0 value to 0
     Y_hat2[Y_hat2<0]=0
@@ -80,14 +96,14 @@ def build_day_range(store_day_idx, store_data, pre=3, aft=3):
     return list(r)
 
 def develop_valid_set2(store_data, store_weather, valid_size=70):
-    store_weatherday=store_weather[store_weather['isweatherday']==1]        
+    store_weatherday=store_weather[store_weather['isweatherday']==1]
     core_cand=store_weatherday.loc['2013-01-01':]
     valid_set=set()
-    while (len(valid_set)<valid_size):           
-        sample_day=random.sample(core_cand.index, 1)    
+    while (len(valid_set)<valid_size):
+        sample_day=random.sample(core_cand.index, 1)
         sample_range=build_day_range(sample_day, store_data)
         valid_set=valid_set.union(sample_range)
-    valid_idx=list(valid_set)    
+    valid_idx=list(valid_set)
     valid=store_data.loc[store_data.index.isin(valid_idx)]
     train=store_data.loc[~store_data.index.isin(valid_idx)]
     print "complete develop valid set(%d)"%len(valid)
@@ -104,7 +120,7 @@ def build_target_set(train, valid, test, store_weather, pre=3, aft=3):
         r=['0']*3
         if store_weather.loc[k]['isweatherday']==1:
             r[0]='1'
-        for d in pd.date_range(end=k[0], periods=pre+1)[:-1]:            
+        for d in pd.date_range(end=k[0], periods=pre+1)[:-1]:
             if ((d, k[1]) in store_weather.index) and \
                (store_weather.loc[(d, k[1])]['isweatherday'])==1:
                 r[1]='1'
@@ -115,7 +131,7 @@ def build_target_set(train, valid, test, store_weather, pre=3, aft=3):
                 r[2]='1'
                 break
         return int(''.join(r),2)
-    
+
     valid_idx=valid.apply(lambda x: f(x), axis=1)
     train_idx=train.apply(lambda x: f(x), axis=1)
     test_idx=test.apply(lambda x: f(x), axis=1)
@@ -150,24 +166,24 @@ def build_target_set2(train, valid, test, store_weather, \
                 return True
             if store_weather.loc[k]['isweatherday']==1:
                 return True
-            for d in pd.date_range(end=k[0], periods=pre+1)[:-1]:            
+            for d in pd.date_range(end=k[0], periods=pre+1)[:-1]:
                 if ((d, k[1]) in store_weather.index) and \
                    (store_weather.loc[(d, k[1])]['isweatherday'])==1:
-                    return True                
+                    return True
             for d in pd.date_range(start=k[0], periods=aft+1)[1:]:
                 if ((d, k[1]) in store_weather.index) and \
                    (store_weather.loc[(d, k[1])]['isweatherday'])==1:
                     return True
             return False
-    
+
         def f_tst(x):
             k=x.name
             return k[0].year==target_year and \
-                k[0].month==target_month            
-            
+                k[0].month==target_month
+
         train_idx=train.apply(lambda x: f_trn(x), axis=1)
         test_idx=test.apply(lambda x: f_tst(x), axis=1)
-       
+
         train0=train[train_idx]
         test0=test[test_idx]
 
@@ -175,3 +191,41 @@ def build_target_set2(train, valid, test, store_weather, \
 
         target_year=target_year1
         target_month=target_month1
+
+def build_target_set3(train, test, store_weather, \
+                      store_data_max, \
+                      column=None, \
+                      pre=3, aft=3):
+    for col in train.columns:
+        if column is not None and int(col)<int(column):
+            continue
+        def f(x):
+            k=x.name
+            store_nbr=k[1]
+            if store_data_max.loc[store_nbr][str(col)]>0:
+                return True
+            return False
+        def f2(x, label_dict):
+            k=x.name
+            return label_dict[(k[0].year, k[0].month)]
+        def fg(x):
+            return x[0].year, x[0].month
+
+        train_idx=train.apply(lambda x: f(x), axis=1)
+        test_idx=test.apply(lambda x: f(x), axis=1)
+        train0=train[train_idx]
+        test0=test[test_idx]
+
+        grouped_train=train0[col].groupby(lambda x: fg(x))
+        monthly_sales=grouped_train.mean()
+        data=np.zeros((len(monthly_sales),3))
+        data[:,:3]=[[i[0], i[1], monthly_sales[i]] for i in monthly_sales.index]
+        label=k_means(data, 4)[1]
+        label_dict = dict(zip(monthly_sales.index, label))
+
+        train0_idx=train0.apply(lambda x: f2(x, label_dict), axis=1)
+        test0_idx=test0.apply(lambda x: f2(x, label_dict), axis=1)
+        for c in range(4):
+            test1=test0[test0_idx==c]
+            train1=train0[train0_idx==c]
+            yield (col, train1, train1.head(1), test1)
