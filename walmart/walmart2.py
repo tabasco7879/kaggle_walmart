@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import random
+import math
+import time
 from sklearn.cluster import k_means
 
 def load_data2(store_data_file, store_weather_file, test_data_file):
@@ -106,8 +108,36 @@ def develop_valid_set2(store_data, store_weather, valid_size=70):
     valid_idx=list(valid_set)
     valid=store_data.loc[store_data.index.isin(valid_idx)]
     train=store_data.loc[~store_data.index.isin(valid_idx)]
-    print "complete develop valid set(%d)"%len(valid)
+    print 'complete develop valid set(%d)'%(len(valid))
     return (train, valid)
+
+def develop_valid_set3(store_data, store_weather, valid_pct=0.1, pre=3, aft=3):
+    def f(x):
+        k=x.name
+        if k[0]<pd.datetime(2013, 1, 1):
+            return False        
+        if (store_weather.loc[k]['isweatherday']==1):
+            return True
+        else:
+            for d in pd.date_range(end=k[0], periods=pre+1)[:-1]:
+                if ((d, k[1]) in store_weather.index and \
+                        store_weather.loc[(d, k[1])]['isweatherday']==1):
+                    return True                        
+            for d in pd.date_range(start=k[0], periods=aft+1)[1:]:
+                if ((d, k[1]) in store_weather.index and \
+                        store_weather.loc[(d, k[1])]['isweatherday']==1):
+                    return True
+            return False            
+    # build a list that in 3 day range of 
+    related_store_data_idx=store_data.apply(lambda x:f(x), axis=1)
+    related_store_data=store_data[related_store_data_idx]
+    #print 'related_store_data', len(related_store_data)
+    sample_size = int(math.ceil(len(related_store_data)*valid_pct))
+    valid_idx=random.sample(related_store_data.index, sample_size)
+    valid=store_data.loc[store_data.index.isin(valid_idx)]
+    train=store_data.loc[~store_data.index.isin(valid_idx)]
+    return train, valid
+    
 
 def build_target_set(train, valid, test, store_weather, pre=3, aft=3):
     def f(x):
@@ -194,10 +224,11 @@ def build_target_set2(train, valid, test, store_weather, \
 
 def build_target_set3(train, test, store_weather, \
                       store_data_max, \
-                      column=None, \
+                      columns=None, \
+                      valid_pct=0.1, \
                       pre=3, aft=3):
     for col in train.columns:
-        if column is not None and int(col)<int(column):
+        if columns is not None and col not in columns:
             continue
         def f(x):
             k=x.name
@@ -228,4 +259,5 @@ def build_target_set3(train, test, store_weather, \
         for c in range(4):
             test1=test0[test0_idx==c]
             train1=train0[train0_idx==c]
-            yield (col, train1, train1.head(1), test1)
+            train2, valid2=develop_valid_set3(train1, store_weather, valid_pct, pre, aft)
+            yield (col, train2, valid2, test1)

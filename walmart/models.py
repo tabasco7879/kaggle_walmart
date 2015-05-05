@@ -3,7 +3,10 @@ from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs
 from scipy.spatial import distance
 from scipy.sparse import csr_matrix
 from similarity import sim, sim_func, l_sim, l_sim_func
-from cost import cost_fun, g_cost_fun, cost_fun3, g_cost_fun3, fun_log_error, cost_fun5, g_cost_fun5, g_cost_fun52
+from cost import cost_fun, g_cost_fun, cost_fun3, g_cost_fun3, fun_log_error, \
+                 cost_fun5, g_cost_fun5, g_cost_fun52, \
+                 cost_log_fun, g_cost_log_fun, \
+                 cost_log_ridge, g_cost_log_ridge
 from utils import normalize
 
 def eval_model(train, valid, Y_hat, column=None):
@@ -225,7 +228,7 @@ def build_model5(train, valid, test, \
         #print 'init total cost=', fval
 
         # run optimiaztion of Y_hat
-        Y_hat, fval, _ = fmin_l_bfgs_b(cost_fun, Y_hat, g_cost_fun, \
+        Y_hat, fval, _ = fmin_l_bfgs_b(cost_log_fun, Y_hat, g_cost_log_fun, \
                             args=(Y, L, ntrain, alpha_train, alpha_unknown), \
                             bounds=Y_hat_bounds, callback=None)
         #print 'optimized total cost=', fval
@@ -257,6 +260,53 @@ def build_model5(train, valid, test, \
             err=e1
 
     return Y_hat.reshape(Y_shape)
+
+def build_model_log_ridge(train, valid, test, \
+                 store_weather_data, \
+                 column, alpha=1):
+    # count the total number of rows
+    ntrain, m = train.values.shape
+
+    nvalid=0
+    if valid is not None:
+        nvalid, _ = valid.values.shape
+
+    ntest=0
+    if test is not None:
+        ntest, _ = test.values.shape
+
+    n = ntrain + nvalid + ntest
+
+    # compute feature matrix
+    _, fmat0 = sim(train, valid, test, store_weather_data)
+
+    # add intercept
+    fmat=np.ones((fmat0.shape[0],fmat0.shape[1]+1))
+    fmat[:,:-1]=fmat0
+
+    # init feature weight
+    fmat_weight=np.random.rand(fmat.shape[1])
+    # set up constraint on fmat that all are >=0
+    fmat_weight_bounds = [(0, None)] * len(fmat_weight)
+
+    # init Y and Y_hat
+    Y = np.zeros(n)
+    Y[0:ntrain] = train[column]
+
+    Y_hat=np.zeros(n)
+
+    # compute init total cost
+    fval = cost_log_ridge(fmat_weight, fmat[:ntrain], Y[:ntrain], alpha)
+    #print 'init total cost=', fval
+
+    # run optimiaztion of fmat_weight
+    fmat_weight, fval, _ = fmin_l_bfgs_b(cost_log_ridge, fmat_weight, g_cost_log_ridge, \
+                            args=(fmat[:ntrain], Y[:ntrain], alpha), \
+                            bounds=fmat_weight_bounds, callback=None)
+    #print 'optimized total cost=', fval
+
+    Y_hat=np.dot(fmat, fmat_weight)
+    return Y_hat, fmat_weight
 
 def compute_D(Y_hat, Y_shape):
     """

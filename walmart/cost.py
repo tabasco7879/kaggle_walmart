@@ -15,11 +15,6 @@ def l_cost_fun2(theta, m, Y_hat, Y):
     l=l_logistic_sim(theta, m)
     return l_fun_sim(Y_hat, l)
 
-def cost_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
-    Y_hat=Y_hat.reshape(Y.shape)
-    return fun_sim(Y_hat, L) \
-              + fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown)
-
 def l_fun_sim(Y_hat, l):
     n=Y_hat.shape[0]
     sim=0
@@ -30,6 +25,29 @@ def l_fun_sim(Y_hat, l):
         for i in range(n):
             sim+=np.dot(l(i), Y_hat)*Y_hat[i]
     return sim
+
+def l_g_cost_fun(Y_hat, Y, l, train_num, alpha_train, alpha_unknown):
+    Y_hat=Y_hat.reshape(Y.shape)
+    g=(l_g_fun_sim(Y_hat, l)+ \
+        g_fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown))
+    return g.flatten()
+
+def l_g_fun_sim(Y_hat, l):
+    n, _ =Y_hat.shape
+    g=np.zeros(Y_hat.shape)
+    for i in range(n):
+        g[i]=np.dot(l(i), Y_hat)
+    return 2*g
+
+def cost_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
+    Y_hat=Y_hat.reshape(Y.shape)
+    return fun_sim(Y_hat, L) \
+              + fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown)
+
+def cost_log_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
+    Y_hat=Y_hat.reshape(Y.shape)
+    return fun_sim(Y_hat, L) \
+              + fun_log_error(Y_hat, Y, train_num, alpha_train, alpha_unknown)
 
 def fun_sim(Y_hat, L):
     return np.trace(Y_hat.T.dot(L).dot(Y_hat))
@@ -52,24 +70,17 @@ def fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown):
     cost_Y_hat[train_num:]=cost_Y_hat[train_num:]*alpha_unknown
     return np.sum(cost_Y_hat)
 
-def l_g_cost_fun(Y_hat, Y, l, train_num, alpha_train, alpha_unknown):
-    Y_hat=Y_hat.reshape(Y.shape)
-    g=(l_g_fun_sim(Y_hat, l)+ \
-        g_fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown))
-    return g.flatten()
-
 def g_cost_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
     Y_hat=Y_hat.reshape(Y.shape)
     g=(g_fun_sim(Y_hat, L)+ \
         g_fun_sqr_error(Y_hat, Y, train_num, alpha_train, alpha_unknown))
     return g.flatten()
 
-def l_g_fun_sim(Y_hat, l):
-    n, _ =Y_hat.shape
-    g=np.zeros(Y_hat.shape)
-    for i in range(n):
-        g[i]=np.dot(l(i), Y_hat)
-    return 2*g
+def g_cost_log_fun(Y_hat, Y, L, train_num, alpha_train, alpha_unknown):
+    Y_hat=Y_hat.reshape(Y.shape)
+    g=(g_fun_sim(Y_hat, L)+ \
+        g_fun_log_error(Y_hat, Y, train_num, alpha_train, alpha_unknown))
+    return g.flatten()
 
 def g_fun_sim(Y_hat, L):
     return 2*np.dot(L, Y_hat)
@@ -147,3 +158,20 @@ def g_cost_fun52(fmat_weight, fmat, Y_hat, Y_shape, D):
     Y_hat=Y_hat.reshape(Y_shape)
     fmat_weight=fmat_weight.reshape(fmat.shape)
     return cost2.g_cost_fun5(fmat_weight, fmat, Y_hat, D).flatten()
+
+def cost_log_ridge(fmat_weight, fmat, Y, alpha):
+    """
+    don't forget the intercept
+    """
+    Y_hat=np.dot(fmat, fmat_weight)
+    log_Y_hat=np.log(Y_hat+1)
+    log_Y=np.log(Y+1)
+    return np.sum((log_Y_hat-log_Y)**2) + alpha*np.dot(fmat_weight, fmat_weight)
+
+def g_cost_log_ridge(fmat_weight, fmat, Y, alpha):
+    Y_hat=np.dot(fmat, fmat_weight)
+    log_Y_hat=np.log(Y_hat+1)
+    log_Y=np.log(Y+1)
+    g1=2*np.sum(((log_Y_hat-log_Y)/(Y_hat+1))[:,np.newaxis]*fmat, axis=0)
+    g2=2*alpha*fmat_weight
+    return g1+g2

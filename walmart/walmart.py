@@ -3,12 +3,17 @@ import numpy as np
 from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs
 import random
 from utils import is_numeric
-from cost import cost_fun, l_cost_fun, l_cost_fun2, l_g_cost_fun, g_cost_fun, fun_log_error, l_fun_sim, fun_sim, fun_log_error_a
-from walmart2 import load_data2, normalize_store_data, develop_valid_set2, build_target_set, build_target_set2, denormalize_store_data, build_target_set3
+from cost import cost_fun, l_cost_fun, l_cost_fun2, l_g_cost_fun, g_cost_fun, \
+                 fun_log_error, l_fun_sim, fun_sim, fun_log_error_a
+from walmart2 import load_data2, normalize_store_data, develop_valid_set2, \
+                     denormalize_store_data, \
+                     build_target_set, build_target_set2, build_target_set3
 from similarity import sim, l_sim, l_logistic_sim, g_logistic_sim
 from sklearn import linear_model
-from models import eval_model, build_model1, build_model3, build_model5
+from models import eval_model, build_model1, build_model3, build_model5, \
+                   build_model_log_ridge
 import os.path
+import logging
 
 def build_model2(train, valid, test, \
                  store_weather_data, \
@@ -282,7 +287,7 @@ def run_model2(store_data_file, store_weather_file, test_data_file):
         # write results to test result
         write_submission(trn, vld, tst, Y_hat2, 'test_result.csv')
 
-def run_model3(store_data_file, store_weather_file, test_data_file, model_param=1, only_validate=False):
+def run_model3(store_data_file, store_weather_file, test_data_file, model_param=1, validate_only=False):
     print "start here"
     test_result_file ='test_result.csv'
 
@@ -326,14 +331,15 @@ def run_model3(store_data_file, store_weather_file, test_data_file, model_param=
         write_submission(trn, vld, tst, Y_hat2, test_result_file, 'valid_result', column=col)
 
     # write out zero estimation
-    if not only_validate:
+    if not validate_only:
         write_submission_zero(test, store_data_max, test_result_file)
 
-def run_model4(store_data_file, store_weather_file, test_data_file, model_param=1, only_validate=False):
+def run_model4(store_data_file, store_weather_file, test_data_file, \
+               model_param=1, validate_only=False, eval_err=None):
     """
     ridge regression
     """
-    print "start here"
+    print "---------------------start here---------------------"
     test_result_file ='test_result.csv'
 
     with open(test_result_file, 'w') as f:
@@ -345,12 +351,14 @@ def run_model4(store_data_file, store_weather_file, test_data_file, model_param=
 
     store_data_max = store_data.groupby(level=1).max()
 
-    train, valid = develop_valid_set2(store_data, store_weather, valid_size=100)
-
-    target_set = build_target_set3(train, valid, test, store_weather, store_data_max)
+    # categorize testing data with a relevant but much smaller training set
+    target_set = build_target_set3(store_data, test, store_weather, store_data_max, columns=set(['1']))
 
     for col, trn, vld, tst in target_set:
-        print "%s, train(%d), valid(%d), test(%d)" % (col, len(trn), len(vld), len(tst))
+        print "item(%s), train(%d), valid(%d), test(%d), model_param(%f)" % \
+              (col, len(trn), len(vld), len(tst), model_param)
+        if len(tst)==0: continue
+
         nm_trn = normalize_store_data(trn, store_data_max)
         nm_vld = normalize_store_data(vld, store_data_max)
         nm_tst = normalize_store_data(tst, store_data_max)
@@ -369,17 +377,78 @@ def run_model4(store_data_file, store_weather_file, test_data_file, model_param=
 
         # evaluate error in training and validation set
         e1, e2 = eval_model(trn, vld, Y_hat2, column=col)
-        print "error is: train(%f), valid(%f)" % (e1, e2)
+        print "error at item(%s) is: train(%f), valid(%f)" % (col, e1, e2)
+        if eval_err is not None:
+            eval_err.add_result(e1, len(trn), e2, len(vld))
 
         # write results to test result
-        write_submission(trn, vld, tst, Y_hat2, test_result_file, 'valid_result', column=col)
+        if not validate_only:
+            write_submission(trn, vld, tst, Y_hat2, test_result_file, 'valid_result', column=col)
 
     # write out zero estimation
-    if not only_validate:
+    if not validate_only:
         write_submission_zero(test, store_data_max, test_result_file)
 
-def run_model5(store_data_file, store_weather_file, test_data_file, model_param=1, only_validate=False):
-    print "start here"
+    if eval_err is not None:
+        e1, e2=eval_err.get_result()
+        logging.info("model4(p=%f) error is: train(%f), valid(%f)" % (model_param, e1, e2))
+        print "model4(p=%f) error is: train(%f), valid(%f)" % (model_param, e1, e2)
+
+def run_model4v1(store_data_file, store_weather_file, test_data_file, \
+                 model_param=1, validate_only=False, eval_err=None):
+    """
+    ridge regression with log error term
+    """
+    print "---------------------start here---------------------"
+    test_result_file ='test_result.csv'
+
+    with open(test_result_file, 'w') as f:
+        f.write('id,units\n')
+        f.close()
+
+    store_data, store_weather, test = load_data2(store_data_file, \
+          store_weather_file, test_data_file)
+
+    store_data_max = store_data.groupby(level=1).max()
+
+    # categorize testing data with a relevant but much smaller training set
+    target_set = build_target_set3(store_data, test, store_weather, store_data_max, columns=set(['1']))
+
+    for col, trn, vld, tst in target_set:
+        print "item(%s), train(%d), valid(%d), test(%d), model_param(%f)" % (col, len(trn), len(vld), len(tst), model_param)
+        if len(tst)==0: continue
+
+        nm_trn = normalize_store_data(trn, store_data_max)
+        nm_vld = normalize_store_data(vld, store_data_max)
+        nm_tst = normalize_store_data(tst, store_data_max)
+
+        Y_hat, fmat_wegith=build_model_log_ridge(nm_trn, nm_vld, nm_tst, store_weather,col, alpha=model_param)
+
+        Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat[:,np.newaxis], store_data_max, column=col)
+
+        # evaluate error in training and validation set
+        e1, e2 = eval_model(trn, vld, Y_hat2, column=col)
+        print "error at item(%s) is: train(%f), valid(%f)" % (col, e1, e2)
+        if eval_err is not None:
+            eval_err.add_result(e1, len(trn), e2, len(vld))
+
+        # write results to test result
+        if not validate_only:
+            write_submission(trn, vld, tst, Y_hat2, test_result_file, 'valid_result', column=col)
+
+    # write out zero estimation
+    if not validate_only:
+        write_submission_zero(test, store_data_max, test_result_file)
+
+    if eval_err is not None:
+        e1, e2=eval_err.get_result()
+        logging.info("model4v1(p=%f) error is: train(%f), valid(%f)" % (model_param, e1, e2))
+        print "model4v1(p=%f) error is: train(%f), valid(%f)" % (model_param, e1, e2)
+
+
+def run_model5(store_data_file, store_weather_file, test_data_file, \
+                 model_param=1, validate_only=False, eval_err=None):
+    print "---------------------start here---------------------"
     test_result_file ='test_result.csv'
 
     # write header to test result
@@ -395,11 +464,11 @@ def run_model5(store_data_file, store_weather_file, test_data_file, model_param=
     store_data_max = store_data.groupby(level=1).max()
 
     # categorize testing data with a relevant but much smaller training set
-    target_set = build_target_set3(store_data, test, store_weather, store_data_max)
+    target_set = build_target_set3(store_data, test, store_weather, store_data_max, valid_pct=0)
 
     # run prediction on testing data of each category
     for col, trn, vld, tst in target_set:
-        print "%s, train(%d), valid(%d), test(%d), model_param(%d)" % (col, len(trn), len(vld), len(tst), model_param)
+        print "%s, train(%d), valid(%d), test(%d), model_param(%f)" % (col, len(trn), len(vld), len(tst), model_param)
         if len(tst)==0: continue
 
         # normalize training, validing and testing data set
@@ -414,14 +483,22 @@ def run_model5(store_data_file, store_weather_file, test_data_file, model_param=
 
         # evaluate error in training and validation set
         e1, e2 = eval_model(trn, vld, Y_hat2, column=col)
-        print "error is: train(%f), valid(%f)" % (e1, e2)
+        print "error at item(%s) is: train(%f), valid(%f)" % (col, e1, e2)
+        if eval_err is not None:
+            eval_err.add_result(e1, len(trn), e2, len(vld))
 
         # write results to test result
-        write_submission(trn, vld, tst, Y_hat2, test_result_file, 'valid_result', column=col)
+        if not validate_only:
+            write_submission(trn, vld, tst, Y_hat2, test_result_file, 'valid_result', column=col)
 
     # write out zero estimation
-    if not only_validate:
+    if not validate_only:
         write_submission_zero(test, store_data_max, test_result_file)
+
+    if eval_err is not None:
+        e1, e2=eval_err.get_result()
+        logging.info("model5(p=%f) error is: train(%f), valid(%f)" % (model_param, e1, e2))
+        print "model5(p=%f) error is: train(%f), valid(%f)" % (model_param, e1, e2)
 
 def write_submission_zero(test, store_data_max, test_result_file):
     zeros=[]
@@ -464,21 +541,54 @@ def write_submission(train, valid, test, Y_hat, test_result_file, \
 
 def run_validation(run_model_fun, \
                    store_data_file, store_weather_file, test_data_file, \
-                   model_params=None, runs=1):
-    if model_params is not None:
-        for p in model_params:
-            for i in range(runs):
-                run_model_fun(store_data_file, \
-                              store_weather_file, \
-                              test_data_file, \
-                              p, only_validate=False)
+                   model_params=None, runs=1, validate_only=False):
+    if validate_only:
+        if model_params is not None:
+            for p in model_params:
+                eval_err_p=EvalErr()
+                for i in range(runs):
+                    eval_err=EvalErr()
+                    run_model_fun(store_data_file, \
+                                  store_weather_file, \
+                                  test_data_file, \
+                                  p, validate_only=True, eval_err=eval_err)
+                    eval_err_p.train_err+=eval_err.train_err
+                    eval_err_p.ntrain+=eval_err.ntrain
+                    eval_err_p.valid_err+=eval_err.valid_err
+                    eval_err_p.nvalid+=eval_err.nvalid
+                e1, e2 = eval_err_p.get_result()
+                logging.info("model(p=%f) error is: train(%f), valid(%f)" % (p, e1, e2))
     else:
         run_model_fun(store_data_file, \
                       store_weather_file, \
-                      test_data_file)
+                      test_data_file, \
+                      model_params[0], validate_only=validate_only)
 
-run_validation(run_model5,
+class EvalErr:
+    def __init__(self):
+        self.train_err=0
+        self.ntrain=0
+        self.valid_err=0
+        self.nvalid=0
+
+    def add_result(self, train_err, ntrain, valid_err, nvalid):
+        if not np.isnan(train_err) and ntrain>0:
+            self.train_err += train_err**2 * ntrain
+            self.ntrain += ntrain
+        if not np.isnan(valid_err) and nvalid>0:
+            self.valid_err += valid_err**2 * nvalid
+            self.nvalid += nvalid
+
+    def get_result(self):
+        return (self.train_err/self.ntrain)**0.5, (self.valid_err/self.nvalid)**0.5,
+
+def main():
+    logging.basicConfig(filename='walmart.log', level=logging.INFO)
+    run_validation(run_model5,
            '../../data/store_train.txt', \
            '../../data/store_weather.txt', \
            '../../data/test.csv', \
-           [50], runs=1)
+           [10], runs=1, validate_only=False)
+
+if __name__ == '__main__':
+    main()

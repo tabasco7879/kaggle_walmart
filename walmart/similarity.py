@@ -10,7 +10,7 @@ def sim(train, valid, test, store_weather_data, is_normalize=True, hidden_featur
     if (test is not None):
         store_test=store_weather_data.loc[test.index]
         store_data=pd.concat([store_data, store_test])
-    df=store_weather_data.loc[store_data.index]
+    df=store_weather_data.loc[store_data.index]    
     fmat=compute_feature2(df, store_data, hidden_feature)
     L=None
     if is_normalize:
