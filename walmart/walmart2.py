@@ -4,6 +4,7 @@ import random
 import math
 import time
 from sklearn.cluster import k_means
+from collections import defaultdict
 
 def load_data2(store_data_file, store_weather_file, test_data_file):
     store_data=pd.read_csv(store_data_file, header=0, \
@@ -261,3 +262,60 @@ def build_target_set3(train, test, store_weather, \
             train1=train0[train0_idx==c]
             train2, valid2=develop_valid_set3(train1, store_weather, valid_pct, pre, aft)
             yield (col, train2, valid2, test1)
+
+def build_target_set4(train, test, store_weather, \
+                      store_data_max, \
+                      columns=None, \
+                      valid_pct=0.1, \
+                      pre=3, aft=3):
+    """
+    if there exist month sales is 0, pick these month out and make this group 0
+    otherwise split the data into seasons, 3-5, 6-8, 9-11, 12-2
+    """
+    for col in train.columns:
+        if columns is not None and col not in columns:
+            continue
+        def f(x):
+            k=x.name
+            store_nbr=k[1]
+            if store_data_max.loc[store_nbr][str(col)]>0:
+                return True
+            return False
+        def f2(x, cat_dict):
+            k=x.name
+            return cat_dict[k[0].month]
+        def fg(x):
+            return x[0].month
+
+        # filter out stores have no sale of the item
+        train_idx=train.apply(lambda x: f(x), axis=1)
+        test_idx=test.apply(lambda x: f(x), axis=1)
+        train0=train[train_idx]
+        test0=test[test_idx]                
+        
+        # check average monthly sale
+        grouped_train=train0.loc['2013-01-01':][col].groupby(lambda x: fg(x))
+        monthly_sales=grouped_train.mean()
+        cat_dict=dict()
+        for idx in monthly_sales.index:
+            if monthly_sales[idx]<0.5:
+                cat_dict[idx]=0
+            else:
+                if 5>=idx>=3:
+                    cat_dict[idx]=1
+                elif 8>=idx>=6:
+                    cat_dict[idx]=2
+                elif 11>=idx>=9:
+                    cat_dict[idx]=3
+                else:
+                    cat_dict[idx]=4
+        print 'item(%s)'%col, cat_dict
+
+        train0_idx=train0.apply(lambda x: f2(x, cat_dict), axis=1)
+        test0_idx=test0.apply(lambda x: f2(x, cat_dict), axis=1)
+        for c in range(len(cat_dict)):
+            test1=test0[test0_idx==c]
+            train1=train0[train0_idx==c]
+            if (len(test1)==0): continue
+            train2, valid2=develop_valid_set3(train1, store_weather, valid_pct, pre, aft)
+            yield (col, train2, valid2, test1, c)

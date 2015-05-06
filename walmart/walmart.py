@@ -7,7 +7,8 @@ from cost import cost_fun, l_cost_fun, l_cost_fun2, l_g_cost_fun, g_cost_fun, \
                  fun_log_error, l_fun_sim, fun_sim, fun_log_error_a
 from walmart2 import load_data2, normalize_store_data, develop_valid_set2, \
                      denormalize_store_data, \
-                     build_target_set, build_target_set2, build_target_set3
+                     build_target_set, build_target_set2, build_target_set3, \
+                     build_target_set4
 from similarity import sim, l_sim, l_logistic_sim, g_logistic_sim
 from sklearn import linear_model
 from models import eval_model, build_model1, build_model3, build_model5, \
@@ -352,28 +353,31 @@ def run_model4(store_data_file, store_weather_file, test_data_file, \
     store_data_max = store_data.groupby(level=1).max()
 
     # categorize testing data with a relevant but much smaller training set
-    target_set = build_target_set3(store_data, test, store_weather, store_data_max, columns=set(['1']))
+    target_set = build_target_set4(store_data, test, store_weather, store_data_max)
 
-    for col, trn, vld, tst in target_set:
-        print "item(%s), train(%d), valid(%d), test(%d), model_param(%f)" % \
-              (col, len(trn), len(vld), len(tst), model_param)
+    for col, trn, vld, tst, cat in target_set:
+        print "item(%s), train(%d), valid(%d), test(%d), model_param(%0.2f), cat(%d)" % \
+              (col, len(trn), len(vld), len(tst), model_param, cat)
         if len(tst)==0: continue
 
-        nm_trn = normalize_store_data(trn, store_data_max)
-        nm_vld = normalize_store_data(vld, store_data_max)
-        nm_tst = normalize_store_data(tst, store_data_max)
+        if cat==0:
+            Y_hat2=np.zeros((len(trn)+len(vld)+len(tst), 1))
+        else:
+            nm_trn = normalize_store_data(trn, store_data_max)
+            nm_vld = normalize_store_data(vld, store_data_max)
+            nm_tst = normalize_store_data(tst, store_data_max)
 
-        _,fmat = sim(nm_trn, nm_vld, nm_tst, store_weather)
+            _,fmat = sim(nm_trn, nm_vld, nm_tst, store_weather)
 
-        Y_hat = np.zeros((len(nm_trn) + len(nm_vld) + len(nm_tst), 1))
-        X = fmat[:len(nm_trn)]
+            Y_hat = np.zeros((len(nm_trn) + len(nm_vld) + len(nm_tst), 1))
+            X = fmat[:len(nm_trn)]
 
-        Y = nm_trn[col].values[:,np.newaxis]
-        clf = linear_model.Ridge(alpha=model_param)
-        clf.fit(X, Y)
-        Y_hat[:] = clf.predict(fmat)
+            Y = nm_trn[col].values[:,np.newaxis]
+            clf = linear_model.Ridge(alpha=model_param)
+            clf.fit(X, Y)
+            Y_hat[:] = clf.predict(fmat)
 
-        Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat, store_data_max, column=col)
+            Y_hat2 = denormalize_store_data(trn, vld, tst, Y_hat, store_data_max, column=col)
 
         # evaluate error in training and validation set
         e1, e2 = eval_model(trn, vld, Y_hat2, column=col)
@@ -584,11 +588,11 @@ class EvalErr:
 
 def main():
     logging.basicConfig(filename='walmart.log', level=logging.INFO)
-    run_validation(run_model5,
+    run_validation(run_model4,
            '../../data/store_train.txt', \
            '../../data/store_weather.txt', \
            '../../data/test.csv', \
-           [10], runs=1, validate_only=False)
+           [1], runs=10, validate_only=True)
 
 if __name__ == '__main__':
     main()
